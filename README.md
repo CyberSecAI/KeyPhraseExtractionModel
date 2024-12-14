@@ -250,7 +250,7 @@ https://github.com/CyberSecAI/cve_info/blob/main/2018/0xxx/CVE-2018-0008.json
 
 ##### Description
 
-> An **unauthenticated root login may allow upon reboot when a commit script is used**. A commit script allows a device administrator to execute certain instructions during commit, which is configured under the [system scripts commit] stanza. Certain commit scripts that work without a problem during normal commit may cause unexpected behavior upon reboot which can leave the system in a state where **root CLI login is allowed without a password** due to the system reverting to a safe mode authentication state. Lastly, only logging in physically to the console port as root, with no password, will work.
+> An unauthenticated root login may allow upon reboot when a commit script is used. A commit script allows a device administrator to execute certain instructions during commit, which is configured under the [system scripts commit] stanza. Certain commit scripts that work without a problem during normal commit may cause u**nexpected behavior upon reboot** which can leave the system in a state where **root CLI login is allowed without a password** due to the system reverting to a safe mode authentication state. Lastly, only logging in physically to the console port as root, with no password, will work.
 
 ##### Extracted KeyPhrases
 
