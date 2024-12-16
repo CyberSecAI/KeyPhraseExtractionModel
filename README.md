@@ -28,9 +28,12 @@ Table of Contents
         - [Extracted KeyPhrases](#extracted-keyphrases-3)
   - [Succinct Over Verbose](#succinct-over-verbose)
     - [Examples](#examples)
-      - [CVE-2018-0008](#cve-2018-0008-1)
+      - [CVE-2021-30113](#cve-2021-30113)
         - [Description](#description-3)
         - [Extracted KeyPhrases](#extracted-keyphrases-4)
+      - [CVE-2018-0008](#cve-2018-0008-1)
+        - [Description](#description-4)
+        - [Extracted KeyPhrases](#extracted-keyphrases-5)
     - [Examples](#examples-1)
       - [CVE-2018-0016](#cve-2018-0016)
   
@@ -268,8 +271,30 @@ https://github.com/CyberSecAI/cve_info/blob/main/2019/10xxx/CVE-2019-10522.json
 ## Succinct Over Verbose
 
 
-
 ### Examples
+
+#### [CVE-2021-30113](https://nvd.nist.gov/vuln/detail/CVE-2021-30113)
+
+##### Description
+> A **blind XSS** vulnerability exists in Web-School ERP V 5.0 via (Add Events) in event name and description fields. An attacker can inject a JavaScript code that will be stored in the page. If any visitor sees the event, then the payload will be executed and **sends the victim's information to the attacker website**.
+##### Extracted KeyPhrases
+
+https://github.com/CyberSecAI/cve_info/blob/main/2021/30xxx/CVE-2021-30113.json
+
+````
+{
+    "rootcause": "",
+    "weakness": "cross-site scripting",
+    "impact": "information disclosure",
+    "vector": "",
+    "attacker": "",
+    "product": "Web-School ERP",
+    "version": "V 5.0",
+    "component": "(Add Events) in event name and description fields"
+}
+````
+
+The impact **sends the victim's information to the attacker website** is categorized as "information disclosure"
 
 #### [CVE-2018-0008](https://nvd.nist.gov/vuln/detail/CVE-2018-0008)
 
