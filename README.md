@@ -23,11 +23,14 @@ Table of Contents
       - [CVE-2018-0008](#cve-2018-0008)
         - [Description](#description-1)
         - [Extracted KeyPhrases](#extracted-keyphrases-2)
+      - [CVE-2019-10522](#cve-2019-10522)
+        - [Description](#description-2)
+        - [Extracted KeyPhrases](#extracted-keyphrases-3)
   - [Succinct Over Verbose](#succinct-over-verbose)
     - [Examples](#examples)
       - [CVE-2018-0008](#cve-2018-0008-1)
-        - [Description](#description-2)
-        - [Extracted KeyPhrases](#extracted-keyphrases-3)
+        - [Description](#description-3)
+        - [Extracted KeyPhrases](#extracted-keyphrases-4)
     - [Examples](#examples-1)
       - [CVE-2018-0016](#cve-2018-0016)
   
@@ -239,6 +242,28 @@ https://github.com/CyberSecAI/cve_info/blob/main/2018/0xxx/CVE-2018-0008.json
         ],
         "component": ""
 ````
+
+#### [CVE-2019-10522](https://nvd.nist.gov/vuln/detail/CVE-2019-10522)
+
+##### Description
+
+"While playing the clip which is nonstandard buffer overflow can occur while parsing in Snapdragon Auto, Snapdragon Compute, Snapdragon Consumer IOT, Snapdragon Industrial IOT, Snapdragon IoT, Snapdragon Mobile, Snapdragon Voice & Music, Snapdragon Wearables in MDM9206, MDM9607, MSM8909W, MSM8996AU, QCA6574AU, QCS405, QCS605, Qualcomm 215, SD 210/SD 212/SD 205, SD 425, SD 427, SD 430, SD 435, SD 439 / SD 429, SD 450, SD 600, SD 615/16/SD 415, SD 625, SD 632, SD 636, SD 665, SD 675, SD 712 / SD 710 / SD 670, SD 730, SD 820, SD 820A, SD 835, SD 845 / SD 850, SD 855, SDA660, SDM439, SDM630, SDM660, SDX20"
+
+##### Extracted KeyPhrases
+https://github.com/CyberSecAI/cve_info/blob/main/2019/10xxx/CVE-2019-10522.json
+````
+{
+    "rootcause": "",
+    "weakness": "nonstandard buffer overflow",
+    "impact": "",
+    "vector": "",
+    "attacker": "",
+    "product": "Snapdragon Auto, Snapdragon Compute, Snapdragon Consumer IOT, Snapdragon Industrial IOT, Snapdragon IoT, Snapdragon Mobile, Snapdragon Voice & Music, Snapdragon Wearables",
+    "version": "",
+    "component": ""
+}
+````
+
 
 ## Succinct Over Verbose
 
