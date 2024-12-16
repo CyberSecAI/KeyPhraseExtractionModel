@@ -31,9 +31,12 @@ Table of Contents
       - [CVE-2021-30113](#cve-2021-30113)
         - [Description](#description-3)
         - [Extracted KeyPhrases](#extracted-keyphrases-4)
-      - [CVE-2018-0008](#cve-2018-0008-1)
+      - [CVE-2022-36778](#cve-2022-36778)
         - [Description](#description-4)
         - [Extracted KeyPhrases](#extracted-keyphrases-5)
+      - [CVE-2018-0008](#cve-2018-0008-1)
+        - [Description](#description-5)
+        - [Extracted KeyPhrases](#extracted-keyphrases-6)
     - [Examples](#examples-1)
       - [CVE-2018-0016](#cve-2018-0016)
   
@@ -295,6 +298,31 @@ https://github.com/CyberSecAI/cve_info/blob/main/2021/30xxx/CVE-2021-30113.json
 ````
 
 The impact **sends the victim's information to the attacker website** is categorized as "information disclosure"
+
+#### [CVE-2022-36778](https://nvd.nist.gov/vuln/detail/CVE-2022-36778)
+
+##### Description
+>insert HTML / js code inside input how to get to the vulnerable input : Workers &gt; worker nickname &gt; inject in this input the code.
+
+##### Extracted KeyPhrases
+https://github.com/CyberSecAI/cve_info/blob/main/2022/36xxx/CVE-2022-36778.json
+````
+{
+    "rootcause": "",
+    "weakness": "cross-site scripting",
+    "impact": "",
+    "vector": "",
+    "attacker": "",
+    "product": "",
+    "version": "",
+    "component": ""
+}
+
+````
+
+>[!TIP] This is a good example where the Vulnerability Description does not explicitly state what the weakness or impact is and it is left to the user to figure it out. 
+> The model does this "figuring out" and assigns "cross-site scripting" as impact rather than extracting out the exact words from the Description.
+
 
 #### [CVE-2018-0008](https://nvd.nist.gov/vuln/detail/CVE-2018-0008)
 
