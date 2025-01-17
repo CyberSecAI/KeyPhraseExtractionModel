@@ -7,10 +7,10 @@ Exact match, RegEx, Fuzzy matching are
 4. not good at finding semantically equivalent phrases
 
 LLMs 
-1. are good, relatively very slow, relatively more expensive, at finding semantically matching phrases even if lexically they are very different e.g. [CVE-2022-36778](https://nvd.nist.gov/vuln/detail/CVE-2022-36778)
+1. are good, relatively very slow, relatively more expensive, good at finding semantically matching phrases even if lexically they are very different e.g. [CVE-2022-36778](https://nvd.nist.gov/vuln/detail/CVE-2022-36778)
     >insert HTML / js code inside input how to get to the vulnerable input : Workers &gt; worker nickname &gt; inject in this input the code.
 
-    is determined to be "cross-site scripting",
+    is correctly interpreted as "cross-site scripting".
 
 2. are non-deterministic by design
 3. are not very controllable e.g. an LLM might (sometimes) exclude the additional part of 'Denial of Service' in (brackets) e.g.

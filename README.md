@@ -1,5 +1,10 @@
 # Overview
 
+>[!IMPORTANT] This is the dataset, and instructions, used to finetune a model to extract keyphrases from 250K CVEs.
+>
+> A MUCH bigger dataset is coming here soon!
+> This will be based on a [compound AI approach](./compound.md).
+
 The following is provided here:
 1. A [dataset of 5216 samples](data_in/finetune_top25_KeyPhrase_WeaknessDescription_json.csv) 
 2. Instructions to finetune the KeyPhraseExtraction model used to extract the Vulnerability Description KeyPhrases for published CVEs which are stored in https://github.com/CyberSecAI/cve_info.
@@ -14,6 +19,7 @@ Table of Contents
 - [Model Focus](#model-focus)
   - [keyphrases](#keyphrases)
     - [Examples Of complex product, version, component](#examples-of-complex-product-version-component)
+    - [Other CVE Examples](#other-cve-examples)
       - [CVE-2018-0004](#cve-2018-0004)
         - [Decscription](#decscription)
         - [Extracted KeyPhrases](#extracted-keyphrases)
@@ -34,11 +40,14 @@ Table of Contents
       - [CVE-2022-36778](#cve-2022-36778)
         - [Description](#description-4)
         - [Extracted KeyPhrases](#extracted-keyphrases-5)
+      - [CVE-2022-2653](#cve-2022-2653)
+        - [Extracted KeyPhrases](#extracted-keyphrases-6)
       - [CVE-2018-0008](#cve-2018-0008-1)
         - [Description](#description-5)
-        - [Extracted KeyPhrases](#extracted-keyphrases-6)
+        - [Extracted KeyPhrases](#extracted-keyphrases-7)
     - [Examples](#examples-1)
       - [CVE-2018-0016](#cve-2018-0016)
+      - [CVE-2021-33123](#cve-2021-33123)
   
   
 
@@ -80,6 +89,13 @@ A [dataset of 5216 samples](data_in/finetune_top25_KeyPhrase_WeaknessDescription
 > This dataset was built up from zero and validated using an LLM-as-a-judge in addition to manual review.
 > 
 > How this was done is very interesting and will be covered separately.
+
+
+
+
+
+
+
 
 # Finetuning
 1. Go to https://aistudio.google.com/tune
@@ -140,6 +156,17 @@ The product, version, component keyphrases:
 
 
 ### Examples Of complex product, version, component
+
+### Other CVE Examples
+
+- https://nvd.nist.gov/vuln/detail/CVE-2018-0689
+- https://nvd.nist.gov/vuln/detail/cve-2019-5986
+- https://nvd.nist.gov/vuln/detail/CVE-2019-5998
+- https://nvd.nist.gov/vuln/detail/CVE-2019-2341
+- https://nvd.nist.gov/vuln/detail/CVE-2019-2285
+- https://nvd.nist.gov/vuln/detail/CVE-2014-7137
+
+
 ####  [CVE-2018-0004](https://nvd.nist.gov/vuln/detail/CVE-2018-0004)  
 
 ##### Decscription
@@ -271,6 +298,7 @@ https://github.com/CyberSecAI/cve_info/blob/main/2019/10xxx/CVE-2019-10522.json
 ````
 
 
+
 ## Succinct Over Verbose
 
 
@@ -323,6 +351,30 @@ https://github.com/CyberSecAI/cve_info/blob/main/2022/36xxx/CVE-2022-36778.json
 >[!TIP] This is a good example where the Vulnerability Description does not explicitly state what the weakness or impact is and it is left to the user to figure it out. 
 > The model does this "figuring out" and assigns "cross-site scripting" as impact rather than extracting out the exact words from the Description.
 
+#### [CVE-2022-2653](https://nvd.nist.gov/vuln/detail/CVE-2022-2653)
+
+##### Extracted KeyPhrases
+https://github.com/CyberSecAI/cve_info/blob/main/2022/2xxx/CVE-2022-2653.json
+
+````
+{
+    "cveId": "CVE-2022-2653",
+    "version": "1.0.0",
+    "timestamp": "2024-12-18T22:42:50.929578+00:00",
+    "description": "With this vulnerability an attacker can read many sensitive files like configuration files, or the /proc/self/environ file, that contains the environment variable used by the web server that includes database credentials. If the web server user is root, an attacker will be able to read any file in the system.",
+    "keyphrases": {
+        "rootcause": "",
+        "weakness": "",
+        "impact": "read sensitive files",
+        "vector": "",
+        "attacker": "attacker",
+        "product": "",
+        "version": "",
+        "component": ""
+    }
+}
+````
+
 
 #### [CVE-2018-0008](https://nvd.nist.gov/vuln/detail/CVE-2018-0008)
 
@@ -354,6 +406,28 @@ e.g. https://github.com/CyberSecAI/cve_info/blob/main/2018/0xxx/CVE-2018-0016.js
 
 > Devices with without CLNS enabled are not vulnerable to this issue. Devices with IS-IS configured on the interface are not vulnerable to this issue unless CLNS routing is also enabled.
 
+#### [CVE-2021-33123](https://nvd.nist.gov/vuln/detail/cve-2021-33123)
 
+> Improper access control in the BIOS authenticated code module for some Intel(R) Processors may allow a privileged user to potentially enable **ae**scalation of privilege via local access.
 
+The '**ae**scalation of privilege' is fixed to "escalation of privilege"
 
+https://github.com/CyberSecAI/cve_info/blob/main/2021/33xxx/CVE-2021-33123.json
+````
+{
+    "cveId": "CVE-2021-33123",
+    "version": "1.0.0",
+    "timestamp": "2024-12-15T20:24:27.876763+00:00",
+    "description": "Improper access control in the BIOS authenticated code module for some Intel(R) Processors may allow a privileged user to potentially enable aescalation of privilege via local access.",
+    "keyphrases": {
+        "rootcause": "Improper access control",
+        "weakness": "",
+        "impact": "escalation of privilege",
+        "vector": "local access",
+        "attacker": "privileged user",
+        "product": "Intel(R) Processors",
+        "version": "",
+        "component": "BIOS authenticated code module"
+    }
+}
+````
