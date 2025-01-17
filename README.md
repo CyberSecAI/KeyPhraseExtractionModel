@@ -75,7 +75,7 @@ Google https://aistudio.google.com/ is used as the model platform as it is the m
 > [!NOTE]  
 > See https://cloud.google.com/ai/gemini for the difference between Google AIStudio and Google Vertex AI.
 
-> [!WARNING] Fine tuned models in https://aistudio.google.com/ have limitations
+> [!CAUTION] Fine tuned models in https://aistudio.google.com/ have limitations
 > 1. Do not currently support a System Prompt 
 >     - a consideration if making the model accessible to others as a system prompt is one mitigation for prompt injection
 > 2. Require OAuth to access and credentials must be renewed after 7 days. 
