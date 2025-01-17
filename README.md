@@ -68,18 +68,21 @@ Table of Contents
 
 
 ## Fine Tune Model
-Google Gemini Flash is used here.
 
 Google https://aistudio.google.com/ is used as the model platform as it is the most accessible for new users, and is free to finetune.
 
 > [!NOTE]  
 > See https://cloud.google.com/ai/gemini for the difference between Google AIStudio and Google Vertex AI.
 
-> [!CAUTION] Fine tuned models in https://aistudio.google.com/ have limitations
+Google Gemini Flash is Finetuned.
+
+> [!WARNING] Fine tuned models in https://aistudio.google.com/ have limitations
 > 1. Do not currently support a System Prompt 
 >     - a consideration if making the model accessible to others as a system prompt is one mitigation for prompt injection
 > 2. Require OAuth to access and credentials must be renewed after 7 days. 
 >     - a consideration if the model is to run continuously or for long periods.
+
+500 CVEs is used as the initial Finetuning dataset.
 
 >[!TIP] 
 > If you already have a model and need to finetune it on your data, consider the inverse, where you should likely have ~0.000001× the number of tokens as a minimum (10K tokens for a 1B parameter model). 
