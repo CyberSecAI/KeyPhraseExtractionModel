@@ -81,15 +81,43 @@ Google https://aistudio.google.com/ is used as the model platform as it is the m
 > 2. Require OAuth to access and credentials must be renewed after 7 days. 
 >     - a consideration if the model is to run continuously or for long periods.
 
+>[!TIP] 
+> If you already have a model and need to finetune it on your data, consider the inverse, where you should likely have ~0.000001× the number of tokens as a minimum (10K tokens for a 1B parameter model). 
+> 
+> [LLMs in Production you own this product, From language models to successful products](https://www.manning.com/books/llms-in-production)
+ 
+ So if Gemini 1.5 Flash is 32B (32B is a guess as it's not published AFAIK), then 
+ - 32,000,000,000 * 0.000001 = 32000 tokens 
+    - ~~ 24000 words (using 0.75 words per token)
+      - ~~ 240 CVE Descriptions (using 100 words per CVE Description)
+      - 500 is used as the minimum to fine-tune a model.
+
 # Dataset
 
-A [dataset of 5216 samples](data_in/finetune_top25_KeyPhrase_WeaknessDescription_json.csv) is provided to finetune the model.
+1. Create a **5** examples manually to use as Few Shot examples for a larger LLM (e.g. Claude Sonnet 3.5)
+   1. review manually
+2. Create ~**500** examples from the Few Shot examples (where 500 is a ~~ minimum required)
+   1. review using an LLM, and manually
+   2. Fine-Tune Gemini 1.5 Flash with 500 dataset
+3. Create ~**5000** examples with the Fine-Tuned model
+   1. review using an LLM, and manually
+   2. The [dataset of 5216 samples](data_in/finetune_top25_KeyPhrase_WeaknessDescription_json.csv) was used to finetune the model.
+4. Create ~**50000** examples with the Fine-Tuned model 
+   1. review using an LLM, and manually
+   2. Based on the review I did not Fine-Tune as the data was good enough
+4. Create ~**250,000** (~~number of publisehd CVEs) examples with the Fine-Tuned model
+   1. review using an LLM, and manually. **This is Work In Progress**
+   1. Deploy to Production i.e. future published CVEs
+
+Published CVEs were used as input data.
+
+
 
 > [!TIP]  
 > This dataset was built up from zero and validated using an LLM-as-a-judge in addition to manual review.
 > 
-> How this was done is very interesting and will be covered separately.
 
+![Import](images/Data_model_improvement.png)
 
 
 
