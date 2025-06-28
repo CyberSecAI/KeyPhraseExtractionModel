@@ -13,6 +13,7 @@ The following is provided here:
 Table of Contents
 - [Overview](#overview)
 - [Language Models](#language-models)
+  - [Dataset Format](#dataset-format)
   - [Fine Tune Model](#fine-tune-model)
 - [Dataset](#dataset)
 - [Finetuning](#finetuning)
@@ -54,35 +55,27 @@ Table of Contents
 
 # Language Models
 
-> [!NOTE]  
-> Google Gemini 2.0 Flash released https://blog.google/technology/google-deepmind/google-gemini-ai-update-december-2024/, Dec 11, 202
-
-> [!NOTE]  
-> Amazon has released its own suite of models per https://www.aboutamazon.com/news/aws/amazon-nova-artificial-intelligence-bedrock-aws Dec 3 2024
-> 
-> See https://aws.amazon.com/ai/generative-ai/nova/understanding/ for details.
-> 
-
 > [!TIP]  
 >See https://artificialanalysis.ai/ for model comparisons.
 
 
-## Fine Tune Model
+## Dataset Format
+The dataset was previously in a format used by [Google AIStudio](https://aistudio.google.com/).
 
-Google https://aistudio.google.com/ is used as the model platform as it is the most accessible for new users, and is free to finetune.
+[Google AIStudio](https://aistudio.google.com/) no longer supports finetuning models.
+
+So the dataset is converted to JSONL for use with [VertexAI](https://cloud.google.com/vertex-ai/generative-ai/docs/models/) using a script per README_convert_script.md.
+
 
 > [!NOTE]  
 > See https://cloud.google.com/ai/gemini for the difference between Google AIStudio and Google Vertex AI.
 
+
+## Fine Tune Model
+
+
 Google Gemini Flash is Finetuned.
 
-> [!WARNING] Fine tuned models in https://aistudio.google.com/ have limitations
-> 1. Do not currently support a System Prompt 
->     - a consideration if making the model accessible to others as a system prompt is one mitigation for prompt injection
-> 2. Require OAuth to access and credentials must be renewed after 7 days. 
->     - a consideration if the model is to run continuously or for long periods.
-
-500 CVEs is used as the initial Finetuning dataset.
 
 >[!TIP] 
 > If you already have a model and need to finetune it on your data, consider the inverse, where you should likely have ~0.000001× the number of tokens as a minimum (10K tokens for a 1B parameter model). 
@@ -123,41 +116,25 @@ Published CVEs were used as input data.
 ![Import](images/Data_model_improvement.png)
 
 
+https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini-use-supervised-tuning#console_1
 
 
+[gemini-2.0-flash-lite-001](https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite)
 
+- Launch stage: Generally available
+- Release date: February 25, 2025
+- Discontinuation date: February 25, 2026
+
+https://cloud.google.com/vertex-ai/generative-ai/pricing
 
 
 # Finetuning
-1. Go to https://aistudio.google.com/tune
-![Import](images/tune.png)
-
-2. Click "Import" and select the [dataset of 5216 samples CSV](data_in/finetune_top25_KeyPhrase_WeaknessDescription_json.csv)
-3. Select first column as Input 
-4. Select second column as Output 
-5. Click "Use first row as headers as the CSV has a heading row"
-
-![Import](images/5216_samples.png)
-6. Click "Import 5216 examples"
-   
-7. Give the model a name and description
-8. Choose the base model
-   > [!NOTE]  
-   > Not all models are available for fine tuning.
-![Import](images/import.png)
-
-10. Click 'Advanced Settings'
-![Import](images/choose_model.png)
-
-11. The 'Advanced settings' can be left as is. 
-    1.  The loss curve can be reviewed at the end of the finetuning.
-
-12. Wait... approx 2.5 hours... for the finetuning to complete
 
 
-![Import](images/tuned_results.png)
 
-12. The loss curve reaches minimum at ~4.5 epochs.
+Tuning dataset
+
+
 
 # Model Focus
 > [!TIP]
@@ -462,3 +439,12 @@ https://github.com/CyberSecAI/cve_info/blob/main/2021/33xxx/CVE-2021-33123.json
     }
 }
 ````
+
+
+
+
+
+
+https://ai.google.dev/gemini-api/docs/model-tuning
+https://colab.research.google.com/github/google/generative-ai-docs/blob/main/site/en/gemini-api/docs/model-tuning/python.ipynb
+https://codelabs.developers.google.com/llm-finetuning-supervised#0
