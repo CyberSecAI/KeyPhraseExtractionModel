@@ -1,0 +1,579 @@
+#!/usr/bin/env python3
+"""
+Create a diverse 50K CVE dataset from the ~260K CVEs in ../cve_info
+for fine-tuning key phrase extraction models.
+
+This script implements stratified sampling across multiple dimensions:
+- Temporal diversity (year-based distribution)
+- Content diversity (description length, keyphrase completeness)
+- Vulnerability type diversity (weakness categories)
+"""
+
+import json
+import csv
+import random
+from pathlib import Path
+from collections import defaultdict, Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Tuple, Optional
+import logging
+from dataclasses import dataclass
+import argparse
+import time
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+@dataclass
+class CVEMetadata:
+    """Metadata for a single CVE entry."""
+    cve_id: str
+    year: int
+    file_path: str
+    description_length: int
+    keyphrase_count: int
+    weakness_type: str
+    has_weakness: bool
+    has_impact: bool
+    has_vector: bool
+    has_product: bool
+
+class CVEAnalyzer:
+    """Analyzes CVE dataset and creates inventory for diverse sampling."""
+    
+    def __init__(self, cve_directory: Path):
+        self.cve_directory = Path(cve_directory)
+        self.inventory: List[CVEMetadata] = []
+        self.year_distribution = Counter()
+        self.weakness_distribution = Counter()
+        
+    def analyze_cve_file(self, file_path: Path) -> Optional[CVEMetadata]:
+        """Analyze a single CVE JSON file."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            cve_id = data.get('cveId', '')
+            if not cve_id.startswith('CVE-'):
+                return None
+                
+            # Extract year from CVE ID
+            year = int(cve_id.split('-')[1])
+            
+            description = data.get('description', '')
+            description_length = len(description)
+            
+            keyphrases = data.get('keyphrases', {})
+            
+            # Count non-empty keyphrases (handle both strings and lists)
+            keyphrase_count = 0
+            for value in keyphrases.values():
+                if value:
+                    if isinstance(value, list):
+                        # For lists, count if any non-empty elements
+                        if any(str(item).strip() for item in value):
+                            keyphrase_count += 1
+                    elif str(value).strip():
+                        keyphrase_count += 1
+            
+            # Extract weakness type (primary categorization)
+            weakness = keyphrases.get('weakness', '')
+            if isinstance(weakness, list):
+                weakness = ', '.join(str(w) for w in weakness if w)
+            weakness = str(weakness).strip()
+            weakness_type = self.categorize_weakness(weakness)
+            
+            # Check for key field presence (handle lists and strings)
+            def has_content(field_value):
+                if isinstance(field_value, list):
+                    return any(str(item).strip() for item in field_value)
+                return bool(str(field_value).strip()) if field_value else False
+            
+            has_weakness = has_content(weakness)
+            has_impact = has_content(keyphrases.get('impact', ''))
+            has_vector = has_content(keyphrases.get('vector', ''))
+            has_product = has_content(keyphrases.get('product', ''))
+            
+            return CVEMetadata(
+                cve_id=cve_id,
+                year=year,
+                file_path=str(file_path),
+                description_length=description_length,
+                keyphrase_count=keyphrase_count,
+                weakness_type=weakness_type,
+                has_weakness=has_weakness,
+                has_impact=has_impact,
+                has_vector=has_vector,
+                has_product=has_product
+            )
+            
+        except Exception as e:
+            logger.warning(f"Error analyzing {file_path}: {e}")
+            return None
+    
+    def categorize_weakness(self, weakness: str) -> str:
+        """Categorize weakness into broad types for diversity."""
+        if not weakness:
+            return "unknown"
+            
+        weakness_lower = weakness.lower()
+        
+        # XSS and Injection vulnerabilities
+        if any(term in weakness_lower for term in [
+            'cross-site scripting', 'xss', 'injection', 'sql injection', 
+            'code injection', 'command injection'
+        ]):
+            return "injection"
+        
+        # Access Control issues
+        if any(term in weakness_lower for term in [
+            'access control', 'authorization', 'authentication', 'privilege',
+            'permission', 'bypass'
+        ]):
+            return "access_control"
+        
+        # Buffer/Memory issues
+        if any(term in weakness_lower for term in [
+            'buffer overflow', 'buffer underflow', 'out of bounds', 
+            'memory corruption', 'heap overflow', 'stack overflow'
+        ]):
+            return "buffer_overflow"
+        
+        # Information Disclosure
+        if any(term in weakness_lower for term in [
+            'information disclosure', 'information leak', 'data exposure',
+            'sensitive information'
+        ]):
+            return "info_disclosure"
+        
+        # Denial of Service
+        if any(term in weakness_lower for term in [
+            'denial of service', 'dos', 'crash', 'resource exhaustion'
+        ]):
+            return "denial_of_service"
+        
+        # Cryptographic issues
+        if any(term in weakness_lower for term in [
+            'cryptographic', 'encryption', 'certificate', 'crypto'
+        ]):
+            return "cryptographic"
+        
+        return "other"
+    
+    def scan_cve_files(self, max_workers: int = 8) -> None:
+        """Scan all CVE files and build inventory."""
+        logger.info(f"Scanning CVE files in {self.cve_directory}")
+        
+        # Find all JSON files
+        json_files = list(self.cve_directory.rglob("*.json"))
+        if not json_files:
+            raise ValueError(f"No JSON files found in {self.cve_directory}")
+        
+        logger.info(f"Found {len(json_files)} JSON files to analyze")
+        
+        processed = 0
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_file = {
+                executor.submit(self.analyze_cve_file, file_path): file_path 
+                for file_path in json_files
+            }
+            
+            # Process completed tasks
+            for future in as_completed(future_to_file):
+                metadata = future.result()
+                if metadata:
+                    self.inventory.append(metadata)
+                    self.year_distribution[metadata.year] += 1
+                    self.weakness_distribution[metadata.weakness_type] += 1
+                
+                processed += 1
+                if processed % 1000 == 0:
+                    logger.info(f"Processed {processed}/{len(json_files)} files")
+        
+        logger.info(f"Successfully analyzed {len(self.inventory)} CVE files")
+        
+    def save_inventory(self, output_path: Path) -> None:
+        """Save inventory to CSV for analysis."""
+        logger.info(f"Saving inventory to {output_path}")
+        
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                'cve_id', 'year', 'file_path', 'description_length', 
+                'keyphrase_count', 'weakness_type', 'has_weakness', 
+                'has_impact', 'has_vector', 'has_product'
+            ])
+            
+            for metadata in self.inventory:
+                writer.writerow([
+                    metadata.cve_id, metadata.year, metadata.file_path,
+                    metadata.description_length, metadata.keyphrase_count,
+                    metadata.weakness_type, metadata.has_weakness,
+                    metadata.has_impact, metadata.has_vector, metadata.has_product
+                ])
+
+class DiverseSampler:
+    """Implements stratified sampling for diverse CVE selection."""
+    
+    def __init__(self, inventory: List[CVEMetadata]):
+        self.inventory = inventory
+        self.sample_size = 50000
+        
+        # Define sampling weights
+        self.year_weights = {
+            range(1999, 2010): 0.05,  # 2,500 samples
+            range(2010, 2016): 0.10,  # 5,000 samples  
+            range(2016, 2020): 0.20,  # 10,000 samples
+            range(2020, 2025): 0.65   # 32,500 samples
+        }
+        
+    def get_year_category(self, year: int) -> str:
+        """Get year category for a given year."""
+        for year_range, _ in self.year_weights.items():
+            if year in year_range:
+                if year_range.start == 1999:
+                    return "1999-2009"
+                elif year_range.start == 2010:
+                    return "2010-2015"
+                elif year_range.start == 2016:
+                    return "2016-2019"
+                else:
+                    return "2020-2024"
+        return "other"
+    
+    def categorize_by_length(self, length: int) -> str:
+        """Categorize description by length."""
+        if length < 250:
+            return "short"
+        elif length < 400:
+            return "medium"
+        else:
+            return "long"
+    
+    def categorize_by_completeness(self, keyphrase_count: int) -> str:
+        """Categorize by keyphrase completeness."""
+        if keyphrase_count >= 4:
+            return "complete"
+        elif keyphrase_count >= 2:
+            return "partial"
+        else:
+            return "sparse"
+    
+    def create_diverse_sample(self) -> List[CVEMetadata]:
+        """Create a diverse sample using stratified sampling."""
+        logger.info(f"Creating diverse sample of {self.sample_size} CVEs")
+        
+        # Group inventory by year category
+        year_groups = defaultdict(list)
+        for cve in self.inventory:
+            year_cat = self.get_year_category(cve.year)
+            year_groups[year_cat].append(cve)
+        
+        logger.info("Year distribution in inventory:")
+        for year_cat, cves in year_groups.items():
+            logger.info(f"  {year_cat}: {len(cves)} CVEs")
+        
+        # Calculate samples per year category
+        samples_per_year = {}
+        for year_range, weight in self.year_weights.items():
+            year_cat = self.get_year_category(year_range.start)
+            samples_per_year[year_cat] = int(self.sample_size * weight)
+        
+        logger.info("Target samples per year category:")
+        for year_cat, count in samples_per_year.items():
+            logger.info(f"  {year_cat}: {count} samples")
+        
+        selected_cves = []
+        
+        # Sample from each year category
+        for year_cat, target_count in samples_per_year.items():
+            available_cves = year_groups.get(year_cat, [])
+            if not available_cves:
+                logger.warning(f"No CVEs available for {year_cat}")
+                continue
+            
+            # Apply secondary diversification within year category
+            sampled = self.diversify_within_category(available_cves, target_count)
+            selected_cves.extend(sampled)
+            
+            logger.info(f"Selected {len(sampled)} CVEs from {year_cat} "
+                       f"(available: {len(available_cves)})")
+        
+        # Shuffle final selection
+        random.shuffle(selected_cves)
+        
+        logger.info(f"Final diverse sample: {len(selected_cves)} CVEs")
+        return selected_cves
+    
+    def diversify_within_category(self, cves: List[CVEMetadata], 
+                                 target_count: int) -> List[CVEMetadata]:
+        """Apply secondary diversification within a year category."""
+        if len(cves) <= target_count:
+            return cves
+        
+        # Group by length and completeness
+        groups = defaultdict(list)
+        for cve in cves:
+            length_cat = self.categorize_by_length(cve.description_length)
+            completeness_cat = self.categorize_by_completeness(cve.keyphrase_count)
+            key = f"{length_cat}_{completeness_cat}"
+            groups[key].append(cve)
+        
+        # Target distribution within category
+        length_dist = {"short": 0.3, "medium": 0.5, "long": 0.2}
+        completeness_dist = {"complete": 0.6, "partial": 0.3, "sparse": 0.1}
+        
+        selected = []
+        remaining_count = target_count
+        
+        # Sample proportionally from each group
+        for length_cat, length_weight in length_dist.items():
+            for comp_cat, comp_weight in completeness_dist.items():
+                group_key = f"{length_cat}_{comp_cat}"
+                group_cves = groups.get(group_key, [])
+                
+                if not group_cves:
+                    continue
+                
+                # Calculate target for this group
+                group_target = int(target_count * length_weight * comp_weight)
+                group_target = min(group_target, len(group_cves), remaining_count)
+                
+                if group_target > 0:
+                    # Further diversify by weakness type within group
+                    weakness_groups = defaultdict(list)
+                    for cve in group_cves:
+                        weakness_groups[cve.weakness_type].append(cve)
+                    
+                    # Sample proportionally from weakness types
+                    group_selected = []
+                    per_weakness = max(1, group_target // len(weakness_groups))
+                    
+                    for weakness_type, weakness_cves in weakness_groups.items():
+                        weakness_sample = min(per_weakness, len(weakness_cves))
+                        group_selected.extend(random.sample(weakness_cves, weakness_sample))
+                    
+                    # Fill remaining slots randomly
+                    if len(group_selected) < group_target:
+                        remaining_cves = [cve for cve in group_cves 
+                                        if cve not in group_selected]
+                        additional = min(group_target - len(group_selected), 
+                                       len(remaining_cves))
+                        group_selected.extend(random.sample(remaining_cves, additional))
+                    
+                    selected.extend(group_selected[:group_target])
+                    remaining_count -= len(group_selected[:group_target])
+        
+        # Fill any remaining slots randomly
+        if remaining_count > 0:
+            remaining_cves = [cve for cve in cves if cve not in selected]
+            if remaining_cves:
+                additional = min(remaining_count, len(remaining_cves))
+                selected.extend(random.sample(remaining_cves, additional))
+        
+        return selected
+
+class JSONLGenerator:
+    """Generates JSONL training dataset from selected CVEs."""
+    
+    def __init__(self, selected_cves: List[CVEMetadata]):
+        self.selected_cves = selected_cves
+        
+    def generate_jsonl(self, output_path: Path) -> None:
+        """Generate JSONL dataset matching the training format."""
+        logger.info(f"Generating JSONL dataset to {output_path}")
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            for i, metadata in enumerate(self.selected_cves):
+                try:
+                    # Load the CVE data
+                    with open(metadata.file_path, 'r', encoding='utf-8') as cve_file:
+                        cve_data = json.load(cve_file)
+                    
+                    description = cve_data.get('description', '')
+                    keyphrases = cve_data.get('keyphrases', {})
+                    
+                    # Create the training example
+                    prompt = f"Extract key phrases from this vulnerability description:\n\n{description}"
+                    
+                    jsonl_entry = {
+                        "contents": [
+                            {
+                                "role": "user",
+                                "parts": [{"text": prompt}]
+                            },
+                            {
+                                "role": "model", 
+                                "parts": [{"text": json.dumps(keyphrases, ensure_ascii=False)}]
+                            }
+                        ]
+                    }
+                    
+                    f.write(json.dumps(jsonl_entry, ensure_ascii=False) + '\n')
+                    
+                    if (i + 1) % 1000 == 0:
+                        logger.info(f"Generated {i + 1}/{len(self.selected_cves)} entries")
+                        
+                except Exception as e:
+                    logger.error(f"Error processing {metadata.cve_id}: {e}")
+                    continue
+        
+        logger.info(f"Successfully generated JSONL dataset with {len(self.selected_cves)} entries")
+
+class QualityValidator:
+    """Validates the generated dataset quality and diversity."""
+    
+    def __init__(self, selected_cves: List[CVEMetadata]):
+        self.selected_cves = selected_cves
+        
+    def generate_report(self, output_path: Path) -> Dict:
+        """Generate quality and diversity report."""
+        logger.info("Generating quality validation report")
+        
+        # Calculate distributions
+        year_dist = Counter(cve.year for cve in self.selected_cves)
+        weakness_dist = Counter(cve.weakness_type for cve in self.selected_cves)
+        length_dist = Counter(
+            "short" if cve.description_length < 250 
+            else "medium" if cve.description_length < 400 
+            else "long" 
+            for cve in self.selected_cves
+        )
+        completeness_dist = Counter(
+            "complete" if cve.keyphrase_count >= 4
+            else "partial" if cve.keyphrase_count >= 2
+            else "sparse"
+            for cve in self.selected_cves
+        )
+        
+        # Calculate year category distribution
+        year_cat_dist = Counter()
+        for cve in self.selected_cves:
+            if 1999 <= cve.year <= 2009:
+                year_cat_dist["1999-2009"] += 1
+            elif 2010 <= cve.year <= 2015:
+                year_cat_dist["2010-2015"] += 1
+            elif 2016 <= cve.year <= 2019:
+                year_cat_dist["2016-2019"] += 1
+            elif 2020 <= cve.year <= 2024:
+                year_cat_dist["2020-2024"] += 1
+        
+        report = {
+            "dataset_size": len(self.selected_cves),
+            "year_category_distribution": dict(year_cat_dist),
+            "year_distribution": dict(year_dist),
+            "weakness_distribution": dict(weakness_dist),
+            "description_length_distribution": dict(length_dist),
+            "keyphrase_completeness_distribution": dict(completeness_dist),
+            "statistics": {
+                "avg_description_length": sum(cve.description_length for cve in self.selected_cves) / len(self.selected_cves),
+                "avg_keyphrase_count": sum(cve.keyphrase_count for cve in self.selected_cves) / len(self.selected_cves),
+                "unique_years": len(set(cve.year for cve in self.selected_cves)),
+                "unique_weakness_types": len(set(cve.weakness_type for cve in self.selected_cves))
+            }
+        }
+        
+        # Save report
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Quality report saved to {output_path}")
+        return report
+
+def main():
+    """Main execution function."""
+    parser = argparse.ArgumentParser(description='Create diverse CVE dataset for training')
+    parser.add_argument('--cve-dir', type=str, default='../cve_info',
+                       help='Path to CVE directory')
+    parser.add_argument('--output-dir', type=str, default='data_out',
+                       help='Output directory for generated files')
+    parser.add_argument('--sample-size', type=int, default=50000,
+                       help='Number of CVEs to sample')
+    parser.add_argument('--max-workers', type=int, default=8,
+                       help='Maximum worker threads for file processing')
+    parser.add_argument('--seed', type=int, default=42,
+                       help='Random seed for reproducible sampling')
+    
+    args = parser.parse_args()
+    
+    # Set random seed for reproducibility
+    random.seed(args.seed)
+    
+    # Setup paths
+    cve_dir = Path(args.cve_dir)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    logger.info(f"Starting diverse CVE dataset generation")
+    logger.info(f"CVE directory: {cve_dir}")
+    logger.info(f"Output directory: {output_dir}")
+    logger.info(f"Target sample size: {args.sample_size}")
+    
+    start_time = time.time()
+    
+    try:
+        # Phase 1: Analyze CVE dataset
+        logger.info("=== Phase 1: CVE Dataset Analysis ===")
+        analyzer = CVEAnalyzer(cve_dir)
+        analyzer.scan_cve_files(max_workers=args.max_workers)
+        
+        inventory_path = output_dir / "cve_inventory.csv"
+        analyzer.save_inventory(inventory_path)
+        
+        # Phase 2: Create diverse sample
+        logger.info("=== Phase 2: Diverse Sampling ===")
+        sampler = DiverseSampler(analyzer.inventory)
+        sampler.sample_size = args.sample_size
+        selected_cves = sampler.create_diverse_sample()
+        
+        # Phase 3: Generate JSONL dataset
+        logger.info("=== Phase 3: JSONL Generation ===")
+        generator = JSONLGenerator(selected_cves)
+        jsonl_path = output_dir / "cve_50k_diverse_sample.jsonl"
+        generator.generate_jsonl(jsonl_path)
+        
+        # Phase 4: Quality validation
+        logger.info("=== Phase 4: Quality Validation ===")
+        validator = QualityValidator(selected_cves)
+        report_path = output_dir / "sampling_metadata.json"
+        report = validator.generate_report(report_path)
+        
+        # Summary
+        elapsed_time = time.time() - start_time
+        logger.info("=== Generation Complete ===")
+        logger.info(f"Total time: {elapsed_time:.2f} seconds")
+        logger.info(f"Generated dataset: {jsonl_path}")
+        logger.info(f"Sample size: {report['dataset_size']}")
+        logger.info(f"Year categories: {report['year_category_distribution']}")
+        logger.info(f"Weakness types: {len(report['weakness_distribution'])}")
+        
+        # Create summary report
+        summary_path = output_dir / "generation_summary.md"
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            f.write(f"# Diverse CVE Dataset Generation Summary\n\n")
+            f.write(f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Processing time: {elapsed_time:.2f} seconds\n")
+            f.write(f"Source directory: {cve_dir}\n")
+            f.write(f"Total CVEs analyzed: {len(analyzer.inventory)}\n")
+            f.write(f"Selected sample size: {report['dataset_size']}\n\n")
+            f.write(f"## Year Distribution\n")
+            for year_cat, count in report['year_category_distribution'].items():
+                percentage = (count / report['dataset_size']) * 100
+                f.write(f"- {year_cat}: {count} ({percentage:.1f}%)\n")
+            f.write(f"\n## Weakness Type Distribution\n")
+            for weakness, count in sorted(report['weakness_distribution'].items(), 
+                                        key=lambda x: x[1], reverse=True):
+                percentage = (count / report['dataset_size']) * 100
+                f.write(f"- {weakness}: {count} ({percentage:.1f}%)\n")
+        
+        logger.info(f"Summary report: {summary_path}")
+        logger.info("Dataset generation completed successfully!")
+        
+    except Exception as e:
+        logger.error(f"Error during dataset generation: {e}")
+        raise
+
+if __name__ == "__main__":
+    main()

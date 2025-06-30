@@ -1,0 +1,63 @@
+{
+  "dataset_size": 50000,
+  "year_category_distribution": {
+    "2020-2024": 32500,
+    "2016-2019": 10000,
+    "2010-2015": 5000,
+    "1999-2009": 2500
+  },
+  "year_distribution": {
+    "2024": 8219,
+    "2021": 5786,
+    "2020": 4914,
+    "2016": 1481,
+    "2017": 2782,
+    "2012": 699,
+    "2023": 7270,
+    "2005": 250,
+    "2022": 6311,
+    "2018": 2775,
+    "2019": 2962,
+    "2006": 400,
+    "2015": 1146,
+    "1999": 213,
+    "2007": 429,
+    "2010": 622,
+    "2009": 347,
+    "2014": 1203,
+    "2013": 774,
+    "2008": 389,
+    "2011": 556,
+    "2004": 137,
+    "2002": 115,
+    "2000": 69,
+    "2001": 76,
+    "2003": 75
+  },
+  "weakness_distribution": {
+    "other": 9048,
+    "unknown": 20802,
+    "buffer_overflow": 6012,
+    "injection": 9183,
+    "access_control": 2875,
+    "info_disclosure": 958,
+    "cryptographic": 531,
+    "denial_of_service": 591
+  },
+  "description_length_distribution": {
+    "short": 18498,
+    "medium": 21352,
+    "long": 10150
+  },
+  "keyphrase_completeness_distribution": {
+    "partial": 11986,
+    "complete": 37390,
+    "sparse": 624
+  },
+  "statistics": {
+    "avg_description_length": 324.7168,
+    "avg_keyphrase_count": 4.74926,
+    "unique_years": 26,
+    "unique_weakness_types": 8
+  }
+}
