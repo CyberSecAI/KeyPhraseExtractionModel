@@ -2,21 +2,27 @@
 
 >[!IMPORTANT] This is the dataset, and instructions, used to finetune a model to extract keyphrases from 250K CVEs.
 >
-> A MUCH bigger dataset is coming here soon!
-> This will be based on a [compound AI approach](./compound.md).
+> This is based on a [compound AI approach](./compound.md).
 
 The following is provided here:
-1. A [dataset of 5216 samples](data_in/finetune_top25_KeyPhrase_WeaknessDescription_json.csv) 
+1. A dataset of 50K diversified samples: 
+   1. [training_data/](training_data/) used to finetune the model
+      1. [training_data/cve_50k_diverse_sample.jsonl](training_data/cve_50k_diverse_sample.jsonl) is the main file used to finetune the model
+      2. [training_data/sample_50_lines.jsonl](training_data/sample_50_lines.jsonl) is a sample of first 50 lines from the main file used to sanity check the finetuning setup before finetuning the larger dataset.
+   
+   2. [validation_data/](validation_data/) contains 500 samples and is used as part of the finetuning process for validation. 
+      1. [validation_data/validation_summary.json](validation_data/validation_summary.json) is the main file.
 2. Instructions to finetune the KeyPhraseExtraction model used to extract the Vulnerability Description KeyPhrases for published CVEs which are stored in https://github.com/CyberSecAI/cve_info.
 3. Detail on the [Model Focus](#model-focus) with examples
 
 Table of Contents
 - [Overview](#overview)
-- [Language Models](#language-models)
-  - [Dataset Format](#dataset-format)
-  - [Fine Tune Model](#fine-tune-model)
-- [Dataset](#dataset)
-- [Finetuning](#finetuning)
+- [FineTuning](#finetuning)
+  - [VertexAI](#vertexai)
+  - [Dataset](#dataset)
+  - [Base Model](#base-model)
+  - [Fine Tune Settings](#fine-tune-settings)
+- [Building the Dataset from Zero](#building-the-dataset-from-zero)
 - [Model Focus](#model-focus)
   - [keyphrases](#keyphrases)
     - [Examples Of complex product, version, component](#examples-of-complex-product-version-component)
@@ -53,34 +59,61 @@ Table of Contents
   
 
 
-# Language Models
+# FineTuning
 
-> [!TIP]  
->See https://artificialanalysis.ai/ for model comparisons.
-
-
-## Dataset Format
-The dataset was previously in a format used by [Google AIStudio](https://aistudio.google.com/).
-
-[Google AIStudio](https://aistudio.google.com/) no longer supports finetuning models.
-
-So the dataset is converted to JSONL for use with [VertexAI](https://cloud.google.com/vertex-ai/generative-ai/docs/models/) using a script per README_convert_script.md.
-
+## VertexAI
+VertexAI is used to finetune the model.
+- Previously [Google AIStudio](https://aistudio.google.com/) was used, but it no longer supports finetuning models.
+- Various code options were tried for finetuning, but the VertexAI console was the most reliable.
+- [VertexAI](https://cloud.google.com/vertex-ai/generative-ai/docs/models/) required a specific format for the dataset.
 
 > [!NOTE]  
 > See https://cloud.google.com/ai/gemini for the difference between Google AIStudio and Google Vertex AI.
 
 
-## Fine Tune Model
+## Dataset
+
+1. A dataset of 50K diversified samples: 
+   1. [training_data/](training_data/) used to finetune the model
+      1. [training_data/cve_50k_diverse_sample.jsonl](training_data/cve_50k_diverse_sample.jsonl) is the main file used to finetune the model
+      2. [training_data/sample_50_lines.jsonl](training_data/sample_50_lines.jsonl) is a sample of 50 lines from the main file used to sanity check the finetuning setup before finetuning the larger dataset.
+   
+   2. [validation_data/](validation_data/) contains 500 samples and is used as part of the finetuning process for validation. 
+      1. [validation_data/validation_summary.json](validation_data/validation_summary.json) is the main file.
+
+## Base Model
+
+[gemini-2.0-flash-lite-001](https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite) was used.
+- See https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite.
+
+Gemini 2.0 Flash Lite is 1/3 of the price of Gemini 2.5 Flash Lite for 1M output tokens.
+It is seen as the upgrade path from Gemini 1.5 Flash i.e. better performance for similar cost.
+
+- Launch stage: Generally available
+- Release date: February 25, 2025
+- Discontinuation date: February 25, 2026
+
+https://cloud.google.com/vertex-ai/generative-ai/pricing
 
 
-Google Gemini Flash is Finetuned.
 
+## Fine Tune Settings
+
+| Parameter                  | Value                        |
+|---------------------------|------------------------------|
+| Base model                | gemini-2.0-flash-lite-001    |
+| Number of epochs          | 1                            |
+| Intermediate checkpoints  | Enabled                      |
+| Default checkpoint        | 1                            |
+| Learning rate multiplier  | 5                            |
+| Adaptor size              | 1                            |
+
+The finetuning took ~22 minutes.
 
 >[!TIP] 
 > If you already have a model and need to finetune it on your data, consider the inverse, where you should likely have ~0.000001× the number of tokens as a minimum (10K tokens for a 1B parameter model). 
 > 
-> [LLMs in Production you own this product, From language models to successful products](https://www.manning.com/books/llms-in-production)
+> [LLMs in Production, From language models to successful products](https://www.manning.com/books/llms-in-production)
  
  So if Gemini 1.5 Flash is 32B (32B is a guess as it's not published AFAIK), then 
  - 32,000,000,000 * 0.000001 = 32000 tokens 
@@ -88,7 +121,7 @@ Google Gemini Flash is Finetuned.
       - ~~ 240 CVE Descriptions (using 100 words per CVE Description)
       - 500 is used as the minimum to fine-tune a model.
 
-# Dataset
+# Building the Dataset from Zero
 
 1. Create a **5** examples manually to use as Few Shot examples for a larger LLM (e.g. Claude Sonnet 3.5)
    1. review manually
@@ -97,15 +130,17 @@ Google Gemini Flash is Finetuned.
    2. Fine-Tune Gemini 1.5 Flash with 500 dataset
 3. Create ~**5000** examples with the Fine-Tuned model
    1. review using an LLM, and manually
-   2. The [dataset of 5216 samples](data_in/finetune_top25_KeyPhrase_WeaknessDescription_json.csv) was used to finetune the model.
+   2. A dataset of 5216 samples (previously data_in/finetune_top25_KeyPhrase_WeaknessDescription_json.csv) was used to finetune the model.
 4. Create ~**50000** examples with the Fine-Tuned model 
    1. review using an LLM, and manually
    2. Based on the review I did not Fine-Tune as the data was good enough
-4. Create ~**250,000** (~~number of publisehd CVEs) examples with the Fine-Tuned model
+5. Create ~**250,000** (~~number of published CVEs to end 2024) examples with the   Fine-Tuned model
    1. review using an LLM, and manually. **This is Work In Progress**
-   1. Deploy to Production i.e. future published CVEs
+6. Create a 50K diversified dataset to finetune the model
+   1. Apply a compound AI approach to analyze the dataset and make improvements.
+   2. Create ~**50,000** diversified sample with the Fine-Tuned model
+   3. Deploy to Production i.e. future published CVEs
 
-Published CVEs were used as input data.
 
 
 
@@ -119,20 +154,8 @@ Published CVEs were used as input data.
 https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini-use-supervised-tuning#console_1
 
 
-[gemini-2.0-flash-lite-001](https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite)
-
-- Launch stage: Generally available
-- Release date: February 25, 2025
-- Discontinuation date: February 25, 2026
-
-https://cloud.google.com/vertex-ai/generative-ai/pricing
 
 
-# Finetuning
-
-
-
-Tuning dataset
 
 
 
@@ -443,8 +466,3 @@ https://github.com/CyberSecAI/cve_info/blob/main/2021/33xxx/CVE-2021-33123.json
 
 
 
-
-
-https://ai.google.dev/gemini-api/docs/model-tuning
-https://colab.research.google.com/github/google/generative-ai-docs/blob/main/site/en/gemini-api/docs/model-tuning/python.ipynb
-https://codelabs.developers.google.com/llm-finetuning-supervised#0
