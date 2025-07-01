@@ -47,8 +47,9 @@ class CVEMetadata:
 class CVEAnalyzer:
     """Analyzes CVE dataset and creates inventory for diverse sampling."""
     
-    def __init__(self, cve_directory: Path):
+    def __init__(self, cve_directory: Path, cwe_directory: Path = None):
         self.cve_directory = Path(cve_directory)
+        self.cwe_directory = Path(cwe_directory) if cwe_directory else None
         self.inventory: List[CVEMetadata] = []
         self.year_distribution = Counter()
         self.weakness_distribution = Counter()
@@ -64,7 +65,7 @@ class CVEAnalyzer:
         try:
             # Use grep to find all CWE lines more efficiently
             result = subprocess.run(
-                ['grep', '-E', '"cweId":\s*"CWE-[0-9]+"', str(file_path)],
+                ['grep', '-E', r'"cweId":\s*"CWE-[0-9]+"', str(file_path)],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -109,6 +110,41 @@ class CVEAnalyzer:
         primary_cwe_id = cwe_ids[0] if cwe_ids else ""
         
         return cwe_ids, len(cwe_ids), primary_cwe_id
+
+    def extract_cwes_from_cve_id(self, cve_id: str) -> Tuple[List[str], int, str]:
+        """Extract CWE IDs for a given CVE ID from the CWE directory.
+        Returns: (cwe_ids, cwe_count, primary_cwe_id)
+        """
+        cwe_ids = []
+        
+        if not self.cwe_directory:
+            return cwe_ids, 0, ""
+        
+        # Extract year and number from CVE ID (e.g., CVE-2025-3121)
+        try:
+            parts = cve_id.split('-')
+            if len(parts) != 3 or parts[0] != 'CVE':
+                return cwe_ids, 0, ""
+            
+            year = parts[1]
+            number = int(parts[2])
+            
+            # Determine the subdirectory (0xxx, 1xxx, etc.)
+            subdir = f"{number // 1000}xxx"
+            
+            # Construct path to CWE file
+            cwe_file_path = self.cwe_directory / "cves" / year / subdir / f"{cve_id}.json"
+            
+            if not cwe_file_path.exists():
+                return cwe_ids, 0, ""
+            
+            # Use the existing file-based extraction method
+            return self.extract_cwes_from_file(cwe_file_path)
+                    
+        except (ValueError, IndexError):
+            pass
+        
+        return cwe_ids, 0, ""
     
         
     def analyze_cve_file(self, file_path: Path) -> Optional[CVEMetadata]:
@@ -140,8 +176,8 @@ class CVEAnalyzer:
                     elif str(value).strip():
                         keyphrase_count += 1
             
-            # Extract CWE information
-            cwe_ids, cwe_count, primary_cwe_id = self.extract_cwes_from_file(file_path)
+            # Extract CWE information from CWE directory
+            cwe_ids, cwe_count, primary_cwe_id = self.extract_cwes_from_cve_id(cve_id)
             
             # Extract weakness type (primary categorization)
             weakness = keyphrases.get('weakness', '')
@@ -256,7 +292,11 @@ class CVEAnalyzer:
                     self.inventory.append(metadata)
                     self.year_distribution[metadata.year] += 1
                     self.weakness_distribution[metadata.weakness_type] += 1
-                    self.cwe_distribution[metadata.cwe_id] += 1
+                    self.cwe_count_distribution[metadata.cwe_count] += 1
+                    
+                    # Count each CWE ID occurrence
+                    for cwe_id in metadata.cwe_ids:
+                        self.cwe_distribution[cwe_id] += 1
                 
                 processed += 1
                 if processed % 1000 == 0:
@@ -272,7 +312,8 @@ class CVEAnalyzer:
             writer = csv.writer(f)
             writer.writerow([
                 'cve_id', 'year', 'file_path', 'description_length', 
-                'keyphrase_count', 'weakness_type', 'cwe_id', 'cwe_category',
+                'keyphrase_count', 'weakness_type', 'cwe_ids',
+                'cwe_count', 'primary_cwe_id',
                 'has_weakness', 'has_impact', 'has_vector', 'has_product'
             ])
             
@@ -280,7 +321,9 @@ class CVEAnalyzer:
                 writer.writerow([
                     metadata.cve_id, metadata.year, metadata.file_path,
                     metadata.description_length, metadata.keyphrase_count,
-                    metadata.weakness_type, metadata.cwe_id, metadata.cwe_category,
+                    metadata.weakness_type, 
+                    '|'.join(metadata.cwe_ids),  # Join multiple CWEs with |
+                    metadata.cwe_count, metadata.primary_cwe_id,
                     metadata.has_weakness, metadata.has_impact, metadata.has_vector, metadata.has_product
                 ])
 
@@ -315,6 +358,14 @@ class DiverseSampler:
             "unknown": 0.02
         }
         
+        # Define CWE count weights for diversity
+        self.cwe_count_weights = {
+            "no_cwe": 0.10,
+            "single_cwe": 0.60,
+            "multiple_cwe": 0.25,
+            "many_cwe": 0.05
+        }
+        
     def get_year_category(self, year: int) -> str:
         """Get year category for a given year."""
         for year_range, _ in self.year_weights.items():
@@ -346,6 +397,17 @@ class DiverseSampler:
             return "partial"
         else:
             return "sparse"
+    
+    def categorize_by_cwe_count(self, cwe_count: int) -> str:
+        """Categorize by CWE count for sampling diversity."""
+        if cwe_count == 0:
+            return "no_cwe"
+        elif cwe_count == 1:
+            return "single_cwe"
+        elif cwe_count <= 3:
+            return "multiple_cwe"
+        else:
+            return "many_cwe"
     
     def create_diverse_sample(self) -> List[CVEMetadata]:
         """Create a diverse sample using stratified sampling."""
@@ -433,7 +495,7 @@ class DiverseSampler:
                     cwe_count_groups = defaultdict(list)
                     
                     for cve in group_cves:
-                        cwe_groups[cve.primary_cwe_category].append(cve)
+                        cwe_groups[cve.primary_cwe_id].append(cve)
                         cwe_count_cat = self.categorize_by_cwe_count(cve.cwe_count)
                         cwe_count_groups[cwe_count_cat].append(cve)
                     
@@ -546,7 +608,7 @@ class QualityValidator:
         # Calculate distributions
         year_dist = Counter(cve.year for cve in self.selected_cves)
         weakness_dist = Counter(cve.weakness_type for cve in self.selected_cves)
-        cwe_category_dist = Counter(cve.primary_cwe_category for cve in self.selected_cves)
+        cwe_category_dist = Counter(cve.primary_cwe_id for cve in self.selected_cves)
         cwe_count_dist = Counter(cve.cwe_count for cve in self.selected_cves)
         
         # Flatten all CWE IDs for distribution
@@ -594,7 +656,7 @@ class QualityValidator:
                 "avg_cwe_count": sum(cve.cwe_count for cve in self.selected_cves) / len(self.selected_cves),
                 "unique_years": len(set(cve.year for cve in self.selected_cves)),
                 "unique_weakness_types": len(set(cve.weakness_type for cve in self.selected_cves)),
-                "unique_cwe_categories": len(set(cve.primary_cwe_category for cve in self.selected_cves)),
+                "unique_cwe_categories": len(set(cve.primary_cwe_id for cve in self.selected_cves)),
                 "unique_cwe_ids": len(set(all_cwe_ids)),
                 "total_cwe_instances": len(all_cwe_ids),
                 "cves_with_cwe": len([cve for cve in self.selected_cves if cve.cwe_count > 0]),
@@ -614,6 +676,8 @@ def main():
     parser = argparse.ArgumentParser(description='Create diverse CVE dataset for training')
     parser.add_argument('--cve-dir', type=str, default='../cve_info',
                        help='Path to CVE directory with keyphrases (default: ../cve_info)')
+    parser.add_argument('--cwe-dir', type=str, default='../cvelistV5',
+                       help='Path to CWE directory (default: ../cvelistV5)')
     parser.add_argument('--output-dir', type=str, default='data_out',
                        help='Output directory for generated files')
     parser.add_argument('--sample-size', type=int, default=50000,
