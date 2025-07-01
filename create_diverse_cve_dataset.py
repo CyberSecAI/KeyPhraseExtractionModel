@@ -12,6 +12,7 @@ This script implements stratified sampling across multiple dimensions:
 import json
 import csv
 import random
+import subprocess
 from pathlib import Path
 from collections import defaultdict, Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,6 +21,7 @@ import logging
 from dataclasses import dataclass
 import argparse
 import time
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,6 +36,9 @@ class CVEMetadata:
     description_length: int
     keyphrase_count: int
     weakness_type: str
+    cwe_ids: List[str]  # List of CWE IDs
+    cwe_count: int  # Number of CWEs
+    primary_cwe_id: str  # Primary CWE ID for sampling
     has_weakness: bool
     has_impact: bool
     has_vector: bool
@@ -47,6 +52,64 @@ class CVEAnalyzer:
         self.inventory: List[CVEMetadata] = []
         self.year_distribution = Counter()
         self.weakness_distribution = Counter()
+        self.cwe_distribution = Counter()
+        self.cwe_count_distribution = Counter()
+        
+    def extract_cwes_from_file(self, file_path: Path) -> Tuple[List[str], int, str]:
+        """Extract all CWE IDs from CVE JSON file using grep pattern.
+        Returns: (cwe_ids, cwe_count, primary_cwe_id)
+        """
+        cwe_ids = []
+        
+        try:
+            # Use grep to find all CWE lines more efficiently
+            result = subprocess.run(
+                ['grep', '-E', '"cweId":\s*"CWE-[0-9]+"', str(file_path)],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                # Extract all CWE IDs using regex
+                cwe_matches = re.findall(r'"cweId":\s*"(CWE-\d+)"', result.stdout)
+                if cwe_matches:
+                    # Remove duplicates while preserving order
+                    seen = set()
+                    for cwe_id in cwe_matches:
+                        if cwe_id not in seen:
+                            cwe_ids.append(cwe_id)
+                            seen.add(cwe_id)
+            
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+            # Fallback to JSON parsing if grep fails
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                # Look for CWE in problemTypes
+                containers = data.get('containers', {})
+                cna = containers.get('cna', {})
+                problem_types = cna.get('problemTypes', [])
+                
+                seen = set()
+                for problem_type in problem_types:
+                    descriptions = problem_type.get('descriptions', [])
+                    for desc in descriptions:
+                        if desc.get('type') == 'CWE' and 'cweId' in desc:
+                            cwe_id = desc['cweId']
+                            if cwe_id not in seen:
+                                cwe_ids.append(cwe_id)
+                                seen.add(cwe_id)
+                                
+            except Exception:
+                pass
+        
+        # Determine primary CWE ID for sampling
+        primary_cwe_id = cwe_ids[0] if cwe_ids else ""
+        
+        return cwe_ids, len(cwe_ids), primary_cwe_id
+    
         
     def analyze_cve_file(self, file_path: Path) -> Optional[CVEMetadata]:
         """Analyze a single CVE JSON file."""
@@ -77,6 +140,9 @@ class CVEAnalyzer:
                     elif str(value).strip():
                         keyphrase_count += 1
             
+            # Extract CWE information
+            cwe_ids, cwe_count, primary_cwe_id = self.extract_cwes_from_file(file_path)
+            
             # Extract weakness type (primary categorization)
             weakness = keyphrases.get('weakness', '')
             if isinstance(weakness, list):
@@ -102,6 +168,9 @@ class CVEAnalyzer:
                 description_length=description_length,
                 keyphrase_count=keyphrase_count,
                 weakness_type=weakness_type,
+                cwe_ids=cwe_ids,
+                cwe_count=cwe_count,
+                primary_cwe_id=primary_cwe_id,
                 has_weakness=has_weakness,
                 has_impact=has_impact,
                 has_vector=has_vector,
@@ -187,6 +256,7 @@ class CVEAnalyzer:
                     self.inventory.append(metadata)
                     self.year_distribution[metadata.year] += 1
                     self.weakness_distribution[metadata.weakness_type] += 1
+                    self.cwe_distribution[metadata.cwe_id] += 1
                 
                 processed += 1
                 if processed % 1000 == 0:
@@ -202,16 +272,16 @@ class CVEAnalyzer:
             writer = csv.writer(f)
             writer.writerow([
                 'cve_id', 'year', 'file_path', 'description_length', 
-                'keyphrase_count', 'weakness_type', 'has_weakness', 
-                'has_impact', 'has_vector', 'has_product'
+                'keyphrase_count', 'weakness_type', 'cwe_id', 'cwe_category',
+                'has_weakness', 'has_impact', 'has_vector', 'has_product'
             ])
             
             for metadata in self.inventory:
                 writer.writerow([
                     metadata.cve_id, metadata.year, metadata.file_path,
                     metadata.description_length, metadata.keyphrase_count,
-                    metadata.weakness_type, metadata.has_weakness,
-                    metadata.has_impact, metadata.has_vector, metadata.has_product
+                    metadata.weakness_type, metadata.cwe_id, metadata.cwe_category,
+                    metadata.has_weakness, metadata.has_impact, metadata.has_vector, metadata.has_product
                 ])
 
 class DiverseSampler:
@@ -227,6 +297,22 @@ class DiverseSampler:
             range(2010, 2016): 0.10,  # 5,000 samples  
             range(2016, 2020): 0.20,  # 10,000 samples
             range(2020, 2025): 0.65   # 32,500 samples
+        }
+        
+        # Define CWE category weights for diversity
+        self.cwe_category_weights = {
+            "web_application": 0.15,
+            "injection": 0.15,
+            "access_control": 0.12,
+            "memory_corruption": 0.12,
+            "information_disclosure": 0.10,
+            "denial_of_service": 0.08,
+            "cryptographic": 0.06,
+            "path_traversal": 0.05,
+            "resource_management": 0.05,
+            "concurrency": 0.04,
+            "other": 0.06,
+            "unknown": 0.02
         }
         
     def get_year_category(self, year: int) -> str:
@@ -321,7 +407,7 @@ class DiverseSampler:
             key = f"{length_cat}_{completeness_cat}"
             groups[key].append(cve)
         
-        # Target distribution within category
+        # Target distribution within category  
         length_dist = {"short": 0.3, "medium": 0.5, "long": 0.2}
         completeness_dist = {"complete": 0.6, "partial": 0.3, "sparse": 0.1}
         
@@ -342,18 +428,43 @@ class DiverseSampler:
                 group_target = min(group_target, len(group_cves), remaining_count)
                 
                 if group_target > 0:
-                    # Further diversify by weakness type within group
-                    weakness_groups = defaultdict(list)
+                    # Further diversify by CWE category and count within group
+                    cwe_groups = defaultdict(list)
+                    cwe_count_groups = defaultdict(list)
+                    
                     for cve in group_cves:
-                        weakness_groups[cve.weakness_type].append(cve)
+                        cwe_groups[cve.primary_cwe_category].append(cve)
+                        cwe_count_cat = self.categorize_by_cwe_count(cve.cwe_count)
+                        cwe_count_groups[cwe_count_cat].append(cve)
                     
-                    # Sample proportionally from weakness types
+                    # Split target between CWE category diversity (70%) and CWE count diversity (30%)
+                    cwe_category_target = int(group_target * 0.7)
+                    cwe_count_target = group_target - cwe_category_target
+                    
                     group_selected = []
-                    per_weakness = max(1, group_target // len(weakness_groups))
                     
-                    for weakness_type, weakness_cves in weakness_groups.items():
-                        weakness_sample = min(per_weakness, len(weakness_cves))
-                        group_selected.extend(random.sample(weakness_cves, weakness_sample))
+                    # Sample by CWE category
+                    for cwe_category, cwe_cves in cwe_groups.items():
+                        cwe_weight = self.cwe_category_weights.get(cwe_category, 0.02)
+                        cwe_target = max(1, int(cwe_category_target * cwe_weight))
+                        cwe_sample = min(cwe_target, len(cwe_cves))
+                        if cwe_sample > 0:
+                            group_selected.extend(random.sample(cwe_cves, cwe_sample))
+                    
+                    # Sample by CWE count (avoiding duplicates)
+                    remaining_cves = [cve for cve in group_cves if cve not in group_selected]
+                    if remaining_cves and cwe_count_target > 0:
+                        remaining_count_groups = defaultdict(list)
+                        for cve in remaining_cves:
+                            cwe_count_cat = self.categorize_by_cwe_count(cve.cwe_count)
+                            remaining_count_groups[cwe_count_cat].append(cve)
+                        
+                        for cwe_count_cat, count_cves in remaining_count_groups.items():
+                            count_weight = self.cwe_count_weights.get(cwe_count_cat, 0.05)
+                            count_target = max(1, int(cwe_count_target * count_weight))
+                            count_sample = min(count_target, len(count_cves))
+                            if count_sample > 0:
+                                group_selected.extend(random.sample(count_cves, count_sample))
                     
                     # Fill remaining slots randomly
                     if len(group_selected) < group_target:
@@ -435,6 +546,14 @@ class QualityValidator:
         # Calculate distributions
         year_dist = Counter(cve.year for cve in self.selected_cves)
         weakness_dist = Counter(cve.weakness_type for cve in self.selected_cves)
+        cwe_category_dist = Counter(cve.primary_cwe_category for cve in self.selected_cves)
+        cwe_count_dist = Counter(cve.cwe_count for cve in self.selected_cves)
+        
+        # Flatten all CWE IDs for distribution
+        all_cwe_ids = []
+        for cve in self.selected_cves:
+            all_cwe_ids.extend(cve.cwe_ids)
+        cwe_dist = Counter(all_cwe_ids)
         length_dist = Counter(
             "short" if cve.description_length < 250 
             else "medium" if cve.description_length < 400 
@@ -465,13 +584,21 @@ class QualityValidator:
             "year_category_distribution": dict(year_cat_dist),
             "year_distribution": dict(year_dist),
             "weakness_distribution": dict(weakness_dist),
+            "cwe_count_distribution": dict(cwe_count_dist),
+            "cwe_distribution": dict(cwe_dist),
             "description_length_distribution": dict(length_dist),
             "keyphrase_completeness_distribution": dict(completeness_dist),
             "statistics": {
                 "avg_description_length": sum(cve.description_length for cve in self.selected_cves) / len(self.selected_cves),
                 "avg_keyphrase_count": sum(cve.keyphrase_count for cve in self.selected_cves) / len(self.selected_cves),
+                "avg_cwe_count": sum(cve.cwe_count for cve in self.selected_cves) / len(self.selected_cves),
                 "unique_years": len(set(cve.year for cve in self.selected_cves)),
-                "unique_weakness_types": len(set(cve.weakness_type for cve in self.selected_cves))
+                "unique_weakness_types": len(set(cve.weakness_type for cve in self.selected_cves)),
+                "unique_cwe_categories": len(set(cve.primary_cwe_category for cve in self.selected_cves)),
+                "unique_cwe_ids": len(set(all_cwe_ids)),
+                "total_cwe_instances": len(all_cwe_ids),
+                "cves_with_cwe": len([cve for cve in self.selected_cves if cve.cwe_count > 0]),
+                "cves_with_multiple_cwe": len([cve for cve in self.selected_cves if cve.cwe_count > 1])
             }
         }
         
@@ -486,7 +613,7 @@ def main():
     """Main execution function."""
     parser = argparse.ArgumentParser(description='Create diverse CVE dataset for training')
     parser.add_argument('--cve-dir', type=str, default='../cve_info',
-                       help='Path to CVE directory')
+                       help='Path to CVE directory with keyphrases (default: ../cve_info)')
     parser.add_argument('--output-dir', type=str, default='data_out',
                        help='Output directory for generated files')
     parser.add_argument('--sample-size', type=int, default=50000,
@@ -495,6 +622,8 @@ def main():
                        help='Maximum worker threads for file processing')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed for reproducible sampling')
+    parser.add_argument('--create-all-cves-csv', action='store_true',
+                       help='Create CSV with all CVEs and their CWEs before sampling')
     
     args = parser.parse_args()
     
@@ -507,7 +636,8 @@ def main():
     output_dir.mkdir(exist_ok=True)
     
     logger.info(f"Starting diverse CVE dataset generation")
-    logger.info(f"CVE directory: {cve_dir}")
+    logger.info(f"CVE directory (keyphrases): {cve_dir}")
+    logger.info(f"CWE directory: {args.cwe_dir}")
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Target sample size: {args.sample_size}")
     
@@ -516,7 +646,30 @@ def main():
     try:
         # Phase 1: Analyze CVE dataset
         logger.info("=== Phase 1: CVE Dataset Analysis ===")
-        analyzer = CVEAnalyzer(cve_dir)
+        cwe_dir = Path(args.cwe_dir)
+        
+        analyzer = CVEAnalyzer(cve_dir, cwe_dir)
+        
+        # Verify CWE directory exists if provided
+        if not cwe_dir.exists():
+            logger.warning(f"CWE directory not found: {cwe_dir}")
+            logger.warning("CWE information will not be available")
+            analyzer.cwe_directory = None
+        
+        # Create all CVEs CSV first if requested
+        if args.create_all_cves_csv:
+            logger.info("Creating comprehensive CVE-CWE inventory...")
+            all_cves_path = output_dir / "all_cves_with_cwe.csv"
+            analyzer.scan_cve_files(max_workers=args.max_workers)
+            analyzer.save_inventory(all_cves_path)
+            logger.info(f"All CVEs inventory saved to: {all_cves_path}")
+            logger.info(f"Total CVEs analyzed: {len(analyzer.inventory)}")
+            cves_with_cwe = len([cve for cve in analyzer.inventory if cve.cwe_count > 0])
+            logger.info(f"CVEs with CWE: {cves_with_cwe} ({cves_with_cwe/len(analyzer.inventory)*100:.1f}%)")
+            logger.info(f"Top CWE IDs: {dict(analyzer.cwe_distribution.most_common(10))}")
+            logger.info(f"CWE count distribution: {dict(analyzer.cwe_count_distribution.most_common())}")
+            return
+        
         analyzer.scan_cve_files(max_workers=args.max_workers)
         
         inventory_path = output_dir / "cve_inventory.csv"
@@ -548,6 +701,10 @@ def main():
         logger.info(f"Sample size: {report['dataset_size']}")
         logger.info(f"Year categories: {report['year_category_distribution']}")
         logger.info(f"Weakness types: {len(report['weakness_distribution'])}")
+        logger.info(f"Unique CWE IDs: {report['statistics']['unique_cwe_ids']}")
+        logger.info(f"CVEs with CWE: {report['statistics']['cves_with_cwe']}")
+        logger.info(f"CVEs with multiple CWEs: {report['statistics']['cves_with_multiple_cwe']}")
+        logger.info(f"Average CWE count: {report['statistics']['avg_cwe_count']:.2f}")
         
         # Create summary report
         summary_path = output_dir / "generation_summary.md"
@@ -567,6 +724,15 @@ def main():
                                         key=lambda x: x[1], reverse=True):
                 percentage = (count / report['dataset_size']) * 100
                 f.write(f"- {weakness}: {count} ({percentage:.1f}%)\n")
+            f.write(f"\n## CWE Count Distribution\n")
+            for cwe_count, count in sorted(report['cwe_count_distribution'].items()):
+                percentage = (count / report['dataset_size']) * 100
+                f.write(f"- {cwe_count} CWE(s): {count} ({percentage:.1f}%)\n")
+            f.write(f"\n## Top CWE IDs\n")
+            for cwe_id, count in sorted(report['cwe_distribution'].items(), 
+                                      key=lambda x: x[1], reverse=True)[:20]:
+                percentage = (count / report['statistics']['total_cwe_instances']) * 100
+                f.write(f"- {cwe_id}: {count} ({percentage:.1f}% of all CWE instances)\n")
         
         logger.info(f"Summary report: {summary_path}")
         logger.info("Dataset generation completed successfully!")
