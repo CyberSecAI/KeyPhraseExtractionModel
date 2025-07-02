@@ -1,2 +1,37 @@
 tmp
 .claude
+CLAUDE.md
+
+# Model configuration (contains sensitive project/endpoint IDs)
+config.py
+
+# Environment files (API keys, secrets)
+.env
+../../env/.env
+../env/.env
+env/.env
+
+# Python cache and environment
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test outputs and temporary files
+test_output*/
+validation_data_temp/
+training_data_temp/

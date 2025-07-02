@@ -178,6 +178,30 @@ cd tests/ && python3 run_tests.py
 python3 create_diverse_cve_dataset.py --cve-dir ../cve_info --cwe-dir ../cvelistV5 --sample-size 50000
 python3 create_validation_dataset.py --cve-dir ../cve_info --size 500 --years 2023 2024
 
+# Test fine-tuned model (requires VertexAI authentication)
+python3 test_fine_tuned_model.py
+
 # Lint and type checking (if available)
 npm run lint && npm run typecheck  # Configure as needed
 ```
+
+### Fine-tuned Model Testing
+
+The `test_fine_tuned_model.py` script tests deployed VertexAI fine-tuned models:
+
+**Authentication Setup:**
+```bash
+# Authenticate with Google Cloud (required for VertexAI)
+gcloud auth application-default login
+```
+
+**Configuration:**
+- Update `config.py` with your VertexAI project, location, and model endpoint
+- For VertexAI endpoints, API keys are not needed - uses default credentials
+- Ensure VertexAI API is enabled in your Google Cloud project
+
+**Test Options:**
+1. **Predefined Examples**: Test with built-in CVE descriptions
+2. **Interactive Mode**: Enter custom CVE descriptions
+3. **Conversation Format**: Test with multi-turn conversation examples
+4. **Run All Tests**: Execute all test modes

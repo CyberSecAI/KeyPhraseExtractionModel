@@ -20,8 +20,13 @@ Table of Contents
 - [FineTuning](#finetuning)
   - [VertexAI](#vertexai)
   - [Dataset](#dataset)
+  - [Test the model and get the Code](#test-the-model-and-get-the-code)
   - [Base Model](#base-model)
+  - [VertexAI](#vertexai-1)
   - [Fine Tune Settings](#fine-tune-settings)
+    - [Observations](#observations)
+    - [Training Dynamics Analysis](#training-dynamics-analysis)
+    - [Recommendations Based on These Results](#recommendations-based-on-these-results)
 - [Building the Dataset from Zero](#building-the-dataset-from-zero)
 - [Model Focus](#model-focus)
   - [keyphrases](#keyphrases)
@@ -65,7 +70,7 @@ Table of Contents
 VertexAI is used to finetune the model.
 - Previously [Google AIStudio](https://aistudio.google.com/) was used, but it no longer supports finetuning models.
 - Various code options were tried for finetuning, but the VertexAI console was the most reliable.
-- [VertexAI](https://cloud.google.com/vertex-ai/generative-ai/docs/models/) required a specific format for the dataset.
+- [VertexAI](https://cloud.google.com/vertex-ai/generative-ai/docs/models/) requires a specific format for the dataset.
 
 > [!NOTE]  
 > See https://cloud.google.com/ai/gemini for the difference between Google AIStudio and Google Vertex AI.
@@ -81,23 +86,63 @@ VertexAI is used to finetune the model.
    2. [validation_data/](validation_data/) contains 500 samples and is used as part of the finetuning process for validation. 
       1. [validation_data/validation_summary.json](validation_data/validation_summary.json) is the main file.
 
+>[!TIP] 
+> If you already have a model and need to finetune it on your data, consider the inverse, where you should likely have ~0.000001× the number of tokens as a minimum (10K tokens for a 1B parameter model). 
+> 
+> [LLMs in Production, From language models to successful products](https://www.manning.com/books/llms-in-production)
+ 
+ So if Gemini 1.5 Flash is 32B (32B is a guess as it's not published AFAIK), then 
+ - 32,000,000,000 * 0.000001 = 32000 tokens 
+    - ~~ 24000 words (using 0.75 words per token)
+      - ~~ 240 CVE Descriptions (using 100 words per CVE Description)
+      - 500 is used as the minimum to fine-tune a model.
+
+## Test the model and get the Code
+
+On the "Deploy and Test" page, click "Open in prompt design" 
+Click "Get Code" to get the code for the model including the project, location, model, and endpoint.
+
+### Testing the Fine-tuned Model
+
+Use `test_fine_tuned_model.py` to test the deployed fine-tuned model:
+
+```bash
+python test_fine_tuned_model.py
+```
+
+**Requirements:**
+- Google Cloud authentication: `gcloud auth application-default login`
+- VertexAI API enabled in your Google Cloud project
+- Fine-tuned model endpoint deployed in VertexAI
+- Update `config.py` with your model endpoint details
+
+**Test Options:**
+1. Test with predefined CVE examples
+2. Interactive testing with custom CVE descriptions
+3. Test with original conversation format
+4. Run all tests
+
+
 ## Base Model
 
-[gemini-2.0-flash-lite-001](https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite) was used.
-- See https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite.
+[gemini-2.0-flash-lite-001](https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite) is used as the base model.
+- See the [model card](https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/2-0-flash-lite).
 
-Gemini 2.0 Flash Lite is 1/3 of the price of Gemini 2.5 Flash Lite for 1M output tokens.
+Gemini 2.0 Flash Lite is [~1/3 of the price](https://cloud.google.com/vertex-ai/generative-ai/pricing) of Gemini 2.5 Flash Lite.
 It is seen as the upgrade path from Gemini 1.5 Flash i.e. better performance for similar cost.
 
 - Launch stage: Generally available
 - Release date: February 25, 2025
 - Discontinuation date: February 25, 2026
 
-https://cloud.google.com/vertex-ai/generative-ai/pricing
 
+## VertexAI
 
+https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini-use-supervised-tuning#console_1
 
 ## Fine Tune Settings
+
+The default parameters were used.
 
 | Parameter                  | Value                        |
 |---------------------------|------------------------------|
@@ -110,16 +155,43 @@ https://cloud.google.com/vertex-ai/generative-ai/pricing
 
 The finetuning took ~22 minutes.
 
->[!TIP] 
-> If you already have a model and need to finetune it on your data, consider the inverse, where you should likely have ~0.000001× the number of tokens as a minimum (10K tokens for a 1B parameter model). 
-> 
-> [LLMs in Production, From language models to successful products](https://www.manning.com/books/llms-in-production)
- 
- So if Gemini 1.5 Flash is 32B (32B is a guess as it's not published AFAIK), then 
- - 32,000,000,000 * 0.000001 = 32000 tokens 
-    - ~~ 24000 words (using 0.75 words per token)
-      - ~~ 240 CVE Descriptions (using 100 words per CVE Description)
-      - 500 is used as the minimum to fine-tune a model.
+
+![Import](images/vertex_ai_finetune_details.png)
+
+
+### Observations
+
+**Strong Performance Indicators:**
+- **High accuracy**: 96.6% training, 96.4% validation - very close scores indicate good generalization
+- **Low loss**: 0.098 training, 0.103 validation - minimal gap suggests no overfitting
+- **Stable convergence**: Accuracy plateaus around step 100-120, loss stabilizes nicely
+- **Good generalization**: Only 0.2% accuracy gap between training and validation
+
+###  Training Dynamics Analysis
+
+**What the charts show:**
+- **Accuracy**: Rapid improvement in first ~50 steps, then steady convergence to 96%+
+- **Loss**: Clean exponential decay from ~3 to ~0.1, textbook convergence pattern
+- **Validation tracking**: Pink validation line closely follows blue training line (once it starts tracking it)
+
+###  Recommendations Based on These Results
+
+**Current parameters were optimal:**
+- 1 epoch was sufficient - you can see the model converged well before step 133
+- Learning rate of 5 worked well - smooth, stable learning curve
+- No signs of overfitting or underfitting
+
+**No need to increase epochs:**
+- The model clearly converged by step ~100-120
+- Additional epochs would likely lead to overfitting
+- You're already at 96.4% validation accuracy, which is excellent
+
+The original parameter choices (1 epoch, learning rate multiplier 5) were good. 
+- The results show clean convergence, high accuracy, and good generalization. 
+
+
+
+
 
 # Building the Dataset from Zero
 
@@ -151,7 +223,7 @@ The finetuning took ~22 minutes.
 ![Import](images/Data_model_improvement.png)
 
 
-https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini-use-supervised-tuning#console_1
+
 
 
 
