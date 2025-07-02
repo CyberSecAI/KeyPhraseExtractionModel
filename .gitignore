@@ -2,6 +2,7 @@ tmp
 .claude
 CLAUDE.md
 __pycache__
+tests/__pycache__
 
 # Model configuration (contains sensitive project/endpoint IDs)
 config.py
