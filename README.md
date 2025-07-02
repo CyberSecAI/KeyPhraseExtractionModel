@@ -99,28 +99,10 @@ VertexAI is used to finetune the model.
 
 ## Test the model and get the Code
 
-On the "Deploy and Test" page, click "Open in prompt design" 
-Click "Get Code" to get the code for the model including the project, location, model, and endpoint.
+1. On the "Deploy and Test" page, click "Open in prompt design" 
+2. Click "Get Code" to get the code for the model including the project, location, model, and endpoint.
 
-### Testing the Fine-tuned Model
 
-Use `test_fine_tuned_model.py` to test the deployed fine-tuned model:
-
-```bash
-python test_fine_tuned_model.py
-```
-
-**Requirements:**
-- Google Cloud authentication: `gcloud auth application-default login`
-- VertexAI API enabled in your Google Cloud project
-- Fine-tuned model endpoint deployed in VertexAI
-- Update `config.py` with your model endpoint details
-
-**Test Options:**
-1. Test with predefined CVE examples
-2. Interactive testing with custom CVE descriptions
-3. Test with original conversation format
-4. Run all tests
 
 
 ## Base Model
